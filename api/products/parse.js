@@ -53,8 +53,8 @@ function generateMockProduct(platform, productId) {
       shop: '潮流箱包旗舰店',
       location: '广东 广州',
       images: [
-        'https://img.alicdn.com/imgextra/i1/demo/backpack1.jpg',
-        'https://img.alicdn.com/imgextra/i2/demo/backpack2.jpg'
+        'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400',
+        'https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?w=400'
       ],
       specs: ['颜色: 黑色/灰色/蓝色', '尺寸: 大号/中号']
     },
@@ -69,7 +69,7 @@ function generateMockProduct(platform, productId) {
       shop: 'Apple官方旗舰店',
       location: '上海',
       images: [
-        'https://img.alicdn.com/imgextra/i1/demo/iphone1.jpg'
+        'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=400'
       ],
       specs: ['颜色: 原色钛金属/蓝色钛金属', '存储: 256GB/512GB/1TB']
     },
@@ -84,7 +84,7 @@ function generateMockProduct(platform, productId) {
       shop: '小米京东自营旗舰店',
       location: '北京',
       images: [
-        'https://img10.360buyimg.com/demo/xiaomi14.jpg'
+        'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=400'
       ],
       specs: ['颜色: 黑色/白色', '版本: 12GB+256GB/16GB+512GB']
     },
@@ -99,7 +99,7 @@ function generateMockProduct(platform, productId) {
       shop: '果园直供店',
       location: '山东 烟台',
       images: [
-        'https://img.pddpic.com/demo/apple1.jpg'
+        'https://images.unsplash.com/photo-1568702846914-96b305d2uj67?w=400'
       ],
       specs: ['规格: 5斤装/10斤装', '大小: 大果/中果']
     },
@@ -114,7 +114,7 @@ function generateMockProduct(platform, productId) {
       shop: '广州服装批发商',
       location: '广东 广州',
       images: [
-        'https://cbu01.alicdn.com/demo/tshirt1.jpg'
+        'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400'
       ],
       specs: ['颜色: 多色可选', '尺码: S-3XL'],
       minOrder: 50
