@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, Upload, Globe, Truck, CreditCard, Languages, ShoppingBag, Package, Shield, ArrowRight, Loader2, Link } from 'lucide-react';
-import { mockProducts } from '../data/mockData';
+import { Search, Upload, Globe, Truck, CreditCard, Languages, ShoppingBag, Package, Shield, ArrowRight, Loader2, Link, CheckCircle, XCircle, ExternalLink, ShoppingCart } from 'lucide-react';
+import { mockProducts, calculateDeliveredPrice } from '../data/mockData';
 import api from '../services/api';
 
 export default function Home() {
@@ -12,20 +12,25 @@ export default function Home() {
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [parsedLink, setParsedLink] = useState(null);
+  const [parsedProduct, setParsedProduct] = useState(null);
+  const [parseError, setParseError] = useState(null);
+  const [activePlatform, setActivePlatform] = useState('all');
   const fileInputRef = useRef(null);
 
   // 检测输入是否为链接
   const isUrl = (text) => {
     return text.includes('http') || text.includes('taobao') || text.includes('tmall') || 
-           text.includes('jd.com') || text.includes('pinduoduo') || text.includes('tb.cn');
+           text.includes('jd.com') || text.includes('pinduoduo') || text.includes('tb.cn') ||
+           text.includes('yangkeduo') || text.includes('1688') || text.includes('3.cn');
   };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     
     setIsLoading(true);
-    setParsedLink(null);
+    setParsedProduct(null);
+    setParseError(null);
+    setShowResults(false);
 
     try {
       // 检测是否为链接
@@ -33,24 +38,38 @@ export default function Home() {
         // 调用链接解析API
         try {
           const parseResult = await api.parseProductUrl(searchQuery);
-          if (parseResult.success) {
-            setParsedLink(parseResult);
-            // 如果解析出商品ID，直接跳转到商品详情页
-            if (parseResult.productId) {
-              navigate(`/product/${parseResult.productId}?platform=${parseResult.platform}`);
-              return;
-            }
+          
+          if (parseResult.success && parseResult.product) {
+            // 计算到手价格
+            const priceInfo = calculateDeliveredPrice(parseResult.product.price, 'US', 0.5);
+            setParsedProduct({
+              ...parseResult,
+              product: {
+                ...parseResult.product,
+                priceUSD: priceInfo.priceUSD,
+                totalUSD: priceInfo.totalUSD,
+                shipping: priceInfo.shipping,
+                serviceFee: priceInfo.serviceFee
+              }
+            });
+            setIsLoading(false);
+            return;
+          } else if (!parseResult.success) {
+            setParseError(parseResult.error);
           }
         } catch (e) {
-          console.log('Link parse failed, falling back to search');
+          console.log('Link parse failed:', e);
+          setParseError(i18n.language === 'zh' 
+            ? '链接解析失败，请检查链接是否正确' 
+            : 'Failed to parse link. Please check if the link is correct.');
         }
       }
 
-      // 调用搜索API
+      // 关键词搜索
       try {
         const result = await api.searchProducts({ 
           q: searchQuery, 
-          destination: 'US',
+          platform: activePlatform !== 'all' ? activePlatform : undefined,
           pageSize: 20
         });
         
@@ -58,11 +77,15 @@ export default function Home() {
           setSearchResults(result.data.items);
           setShowResults(true);
         } else {
-          // 如果API没有结果，使用模拟数据
-          setSearchResults(mockProducts.map(p => ({
+          // 使用模拟数据
+          const filtered = activePlatform === 'all' 
+            ? mockProducts 
+            : mockProducts.filter(p => p.platform.toLowerCase() === activePlatform);
+          
+          setSearchResults(filtered.map(p => ({
             id: p.id,
             platform: p.platform,
-            title: p.title[i18n.language],
+            title: p.title[i18n.language] || p.title.en,
             titleEn: p.title.en,
             image: p.images[0],
             price: p.originalPrice,
@@ -75,10 +98,14 @@ export default function Home() {
       } catch (e) {
         // API调用失败时使用模拟数据
         console.log('API unavailable, using mock data');
-        setSearchResults(mockProducts.map(p => ({
+        const filtered = activePlatform === 'all' 
+          ? mockProducts 
+          : mockProducts.filter(p => p.platform.toLowerCase() === activePlatform);
+        
+        setSearchResults(filtered.map(p => ({
           id: p.id,
           platform: p.platform,
-          title: p.title[i18n.language],
+          title: p.title[i18n.language] || p.title.en,
           titleEn: p.title.en,
           image: p.images[0],
           price: p.originalPrice,
@@ -101,15 +128,25 @@ export default function Home() {
     }
   };
 
+  const handlePaste = async (e) => {
+    const pastedText = e.clipboardData?.getData('text') || '';
+    if (isUrl(pastedText)) {
+      setSearchQuery(pastedText);
+      // 自动触发搜索
+      setTimeout(() => {
+        handleSearch();
+      }, 100);
+    }
+  };
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
       // TODO: 实现图片搜索API
-      // 目前使用模拟数据
       setSearchResults(mockProducts.map(p => ({
         id: p.id,
         platform: p.platform,
-        title: p.title[i18n.language],
+        title: p.title[i18n.language] || p.title.en,
         titleEn: p.title.en,
         image: p.images[0],
         price: p.originalPrice,
@@ -120,6 +157,21 @@ export default function Home() {
       setShowResults(true);
     }
   };
+
+  const clearParsedProduct = () => {
+    setParsedProduct(null);
+    setParseError(null);
+    setSearchQuery('');
+  };
+
+  const platforms = [
+    { id: 'all', name: '全部', nameEn: 'All' },
+    { id: 'taobao', name: '淘宝', nameEn: 'Taobao', color: '#FF4400' },
+    { id: 'tmall', name: '天猫', nameEn: 'Tmall', color: '#FF0036' },
+    { id: 'jd', name: '京东', nameEn: 'JD', color: '#E1251B' },
+    { id: 'pinduoduo', name: '拼多多', nameEn: 'Pinduoduo', color: '#E02E24' },
+    { id: '1688', name: '1688', nameEn: '1688', color: '#FF6A00' }
+  ];
 
   const features = [
     { icon: Languages, titleKey: 'feature1Title', descKey: 'feature1Desc' },
@@ -136,15 +188,32 @@ export default function Home() {
           <h1>{t('heroTitle')}</h1>
           <p>{t('heroSubtitle')}</p>
           
+          {/* Platform Tabs */}
+          <div className="platform-tabs">
+            {platforms.map(platform => (
+              <button
+                key={platform.id}
+                className={`platform-tab ${activePlatform === platform.id ? 'active' : ''}`}
+                onClick={() => setActivePlatform(platform.id)}
+                style={activePlatform === platform.id && platform.color ? { borderColor: platform.color, color: platform.color } : {}}
+              >
+                {i18n.language === 'zh' ? platform.name : platform.nameEn}
+              </button>
+            ))}
+          </div>
+
           <div className="search-container">
             <div className="search-box">
               <Search className="search-icon" size={20} />
               <input
                 type="text"
-                placeholder={t('searchPlaceholder')}
+                placeholder={i18n.language === 'zh' 
+                  ? '粘贴商品链接或输入关键词搜索...' 
+                  : 'Paste product link or enter keywords...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={handleKeyPress}
+                onPaste={handlePaste}
               />
               <button 
                 className="upload-btn"
@@ -167,28 +236,133 @@ export default function Home() {
           </div>
 
           {/* 链接解析提示 */}
-          {parsedLink && (
-            <div className="parse-result">
-              <Link size={16} />
-              <span>
-                {i18n.language === 'zh' 
-                  ? `已识别 ${parsedLink.platform} 商品` 
-                  : `Detected ${parsedLink.platform} product`}
-              </span>
-            </div>
-          )}
-
-          <div className="platform-badges">
-            <span className="badge taobao">淘宝 Taobao</span>
-            <span className="badge tmall">天猫 Tmall</span>
-            <span className="badge jd">京东 JD</span>
-            <span className="badge pdd">拼多多 Pinduoduo</span>
+          <div className="search-hint">
+            <Link size={14} />
+            <span>
+              {i18n.language === 'zh' 
+                ? '支持淘宝、天猫、京东、拼多多、1688商品链接' 
+                : 'Supports Taobao, Tmall, JD, Pinduoduo, 1688 product links'}
+            </span>
           </div>
         </div>
       </section>
 
+      {/* 解析错误提示 */}
+      {parseError && (
+        <section className="parse-error-section">
+          <div className="parse-error">
+            <XCircle size={24} />
+            <span>{parseError}</span>
+            <button onClick={clearParsedProduct}>
+              {i18n.language === 'zh' ? '关闭' : 'Close'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* 解析成功的商品卡片 */}
+      {parsedProduct && parsedProduct.product && (
+        <section className="parsed-product-section">
+          <div className="parsed-product-card">
+            <div className="parsed-header">
+              <CheckCircle size={20} className="success-icon" />
+              <span>
+                {i18n.language === 'zh' 
+                  ? `已识别 ${parsedProduct.platformInfo?.name || parsedProduct.platform} 商品` 
+                  : `Detected ${parsedProduct.platformInfo?.nameEn || parsedProduct.platform} product`}
+              </span>
+              <button className="close-btn" onClick={clearParsedProduct}>×</button>
+            </div>
+            
+            <div className="parsed-content">
+              <div className="product-image-wrapper">
+                {parsedProduct.product.images?.[0] ? (
+                  <img src={parsedProduct.product.images[0]} alt={parsedProduct.product.title} />
+                ) : (
+                  <div className="placeholder-image">
+                    <ShoppingBag size={48} />
+                  </div>
+                )}
+                <span 
+                  className="platform-badge"
+                  style={{ backgroundColor: parsedProduct.platformInfo?.color || '#666' }}
+                >
+                  {parsedProduct.platformInfo?.name || parsedProduct.platform}
+                </span>
+              </div>
+              
+              <div className="product-details">
+                <h3 className="product-title">
+                  {i18n.language === 'zh' 
+                    ? parsedProduct.product.title 
+                    : parsedProduct.product.titleEn || parsedProduct.product.title}
+                </h3>
+                
+                <div className="product-meta">
+                  <span className="shop">{parsedProduct.product.shop}</span>
+                  <span className="location">{parsedProduct.product.location}</span>
+                  {parsedProduct.product.rating && (
+                    <span className="rating">⭐ {parsedProduct.product.rating}</span>
+                  )}
+                  {parsedProduct.product.sales && (
+                    <span className="sales">{parsedProduct.product.sales} {i18n.language === 'zh' ? '已售' : 'sold'}</span>
+                  )}
+                </div>
+
+                {parsedProduct.product.specs && (
+                  <div className="product-specs">
+                    {parsedProduct.product.specs.map((spec, idx) => (
+                      <span key={idx} className="spec-tag">{spec}</span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="price-breakdown">
+                  <div className="price-row">
+                    <span className="label">{i18n.language === 'zh' ? '商品价格' : 'Product Price'}</span>
+                    <span className="value">¥{parsedProduct.product.price?.toFixed(2)}</span>
+                    <span className="converted">≈ ${parsedProduct.product.priceUSD?.toFixed(2)}</span>
+                  </div>
+                  <div className="price-row">
+                    <span className="label">{i18n.language === 'zh' ? '国际运费' : 'Shipping'}</span>
+                    <span className="value">${parsedProduct.product.shipping?.toFixed(2)}</span>
+                  </div>
+                  <div className="price-row">
+                    <span className="label">{i18n.language === 'zh' ? '服务费' : 'Service Fee'}</span>
+                    <span className="value">${parsedProduct.product.serviceFee?.toFixed(2)}</span>
+                  </div>
+                  <div className="price-row total">
+                    <span className="label">{i18n.language === 'zh' ? '预估到手价' : 'Est. Total'}</span>
+                    <span className="value total-price">${parsedProduct.product.totalUSD?.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="action-buttons">
+                  <button 
+                    className="btn-primary"
+                    onClick={() => navigate(`/product/${parsedProduct.productId}?platform=${parsedProduct.platform}`)}
+                  >
+                    <ShoppingCart size={18} />
+                    {i18n.language === 'zh' ? '立即购买' : 'Buy Now'}
+                  </button>
+                  <a 
+                    href={parsedProduct.originalUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="btn-secondary"
+                  >
+                    <ExternalLink size={18} />
+                    {i18n.language === 'zh' ? '查看原链接' : 'View Original'}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Search Results */}
-      {showResults && (
+      {showResults && !parsedProduct && (
         <section className="search-results">
           <h2>{i18n.language === 'zh' ? '搜索结果' : 'Search Results'}</h2>
           <div className="products-grid">
