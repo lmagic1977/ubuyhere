@@ -210,3 +210,37 @@ export const getEstimatedDelivery = (destination = 'US') => {
   };
   return deliveryDays[destination] || deliveryDays.US;
 };
+
+// Calculate delivered price (simplified version for product cards)
+export const calculateDeliveredPrice = (priceCNY, destination = 'US', weight = 0.5) => {
+  const exchangeRate = 0.14; // CNY to USD
+  const priceUSD = priceCNY * exchangeRate;
+  
+  // Shipping rates by destination
+  const shippingRates = {
+    US: { base: 8, perKg: 12 },
+    UK: { base: 10, perKg: 15 },
+    AU: { base: 12, perKg: 18 },
+    CA: { base: 9, perKg: 13 },
+    EU: { base: 11, perKg: 16 }
+  };
+  const rate = shippingRates[destination] || shippingRates.US;
+  const shipping = rate.base + (weight * rate.perKg);
+  
+  // Service fee: 10% of product price, min $3, max $50
+  const serviceFee = Math.min(Math.max(priceUSD * 0.1, 3), 50);
+  
+  // Tax (US has de minimis, others ~10%)
+  const taxRate = destination === 'US' ? 0 : 0.1;
+  const tax = (priceUSD + shipping) * taxRate;
+  
+  const totalUSD = priceUSD + shipping + serviceFee + tax;
+  
+  return {
+    priceUSD: parseFloat(priceUSD.toFixed(2)),
+    shipping: parseFloat(shipping.toFixed(2)),
+    serviceFee: parseFloat(serviceFee.toFixed(2)),
+    tax: parseFloat(tax.toFixed(2)),
+    totalUSD: parseFloat(totalUSD.toFixed(2))
+  };
+};
