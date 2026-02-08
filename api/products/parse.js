@@ -1,6 +1,6 @@
 /**
- * UBUYHERE API - 商品链接解析
- * 支持淘宝、天猫、京东、拼多多
+ * UBUYHERE API - 商品链接解析 (集成RapidAPI)
+ * 支持淘宝、天猫、京东、拼多多、1688
  */
 
 const PLATFORM_PATTERNS = {
@@ -39,7 +39,60 @@ const PLATFORM_INFO = {
   '1688': { name: '1688', nameEn: '1688', color: '#FF6A00' }
 };
 
-// 模拟商品数据生成（实际项目中这里会调用真实API或爬虫服务）
+// 调用RapidAPI获取真实商品数据
+async function fetchProductFromRapidAPI(productId, platform) {
+  const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+  
+  if (!RAPIDAPI_KEY) {
+    console.log('RapidAPI key not configured, using mock data');
+    return null;
+  }
+
+  try {
+    // RapidAPI Taobao Product API endpoint
+    const url = `https://taobao-product-api.p.rapidapi.com/item_detail?num_iid=${productId}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': RAPIDAPI_KEY,
+        'X-RapidAPI-Host': 'taobao-product-api.p.rapidapi.com'
+      }
+    });
+
+    if (!response.ok) {
+      console.log('RapidAPI request failed:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (data && data.item) {
+      const item = data.item;
+      return {
+        title: item.title || item.name || '商品标题',
+        titleEn: item.title_en || item.title || 'Product Title',
+        price: parseFloat(item.price) || parseFloat(item.promo_price) || 99.00,
+        originalPrice: parseFloat(item.original_price) || parseFloat(item.price) || 199.00,
+        currency: 'CNY',
+        sales: item.sold_count || item.sales || '1000+',
+        rating: item.rating || 4.8,
+        shop: item.shop_name || item.seller_nick || '官方店铺',
+        location: item.location || '中国',
+        images: item.images || item.main_imgs || [item.pic_url].filter(Boolean),
+        specs: item.props_list ? Object.values(item.props_list).slice(0, 5) : [],
+        description: item.desc || item.description || ''
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('RapidAPI fetch error:', error);
+    return null;
+  }
+}
+
+// 模拟商品数据（当API不可用时的后备方案）
 function generateMockProduct(platform, productId) {
   const mockProducts = {
     taobao: {
@@ -99,7 +152,7 @@ function generateMockProduct(platform, productId) {
       shop: '果园直供店',
       location: '山东 烟台',
       images: [
-        'https://images.unsplash.com/photo-1568702846914-96b305d2uj67?w=400'
+        'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400'
       ],
       specs: ['规格: 5斤装/10斤装', '大小: 大果/中果']
     },
@@ -128,16 +181,14 @@ function generateMockProduct(platform, productId) {
     id: productId || `${platform}_${Date.now()}`,
     platform,
     platformInfo: PLATFORM_INFO[platform],
-    // 添加随机变化使数据更真实
-    price: baseProduct.price * (0.9 + Math.random() * 0.2),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    dataSource: 'mock' // 标记数据来源
   };
 }
 
 function parseUrl(url) {
   if (!url) return { error: 'URL is required', success: false };
 
-  // 标准化URL
   let normalizedUrl = url.trim();
   if (!normalizedUrl.startsWith('http')) {
     normalizedUrl = 'https://' + normalizedUrl;
@@ -159,7 +210,7 @@ function parseUrl(url) {
     }
   }
 
-  // 域名检测（短链接等情况）
+  // 域名检测
   const domainChecks = [
     { domain: 'taobao', platform: 'taobao' },
     { domain: 'tb.cn', platform: 'taobao' },
@@ -187,7 +238,6 @@ function parseUrl(url) {
 }
 
 function extractUrlFromText(text) {
-  // 匹配各种URL格式
   const urlPatterns = [
     /(https?:\/\/[^\s\u4e00-\u9fa5\u3000]+)/,
     /(item\.taobao\.com[^\s\u4e00-\u9fa5]+)/,
@@ -209,7 +259,7 @@ function extractUrlFromText(text) {
   return null;
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -227,12 +277,12 @@ export default function handler(req, res) {
   
   let targetUrl = url;
   
-  // 从文本中提取URL（支持淘口令等）
+  // 从文本中提取URL
   if (text && !url) {
     targetUrl = extractUrlFromText(text);
     if (!targetUrl) {
       return res.status(200).json({ 
-        error: 'No valid product URL found in text. Please paste a link from Taobao, Tmall, JD, Pinduoduo, or 1688.', 
+        error: 'No valid product URL found in text.', 
         success: false 
       });
     }
@@ -245,9 +295,22 @@ export default function handler(req, res) {
     return res.status(200).json(parseResult);
   }
 
-  // 如果需要获取商品信息
-  if (fetchProduct) {
-    const product = generateMockProduct(parseResult.platform, parseResult.productId);
+  // 获取商品信息
+  if (fetchProduct && parseResult.productId) {
+    // 首先尝试从RapidAPI获取真实数据
+    let product = await fetchProductFromRapidAPI(parseResult.productId, parseResult.platform);
+    
+    // 如果API失败，使用模拟数据
+    if (!product) {
+      product = generateMockProduct(parseResult.platform, parseResult.productId);
+    } else {
+      product.dataSource = 'rapidapi'; // 标记数据来源
+    }
+
+    product.id = parseResult.productId;
+    product.platform = parseResult.platform;
+    product.platformInfo = parseResult.platformInfo;
+
     return res.status(200).json({
       ...parseResult,
       product
