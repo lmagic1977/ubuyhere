@@ -1,6 +1,7 @@
 /**
- * UBUYHERE API - 商品链接解析 (集成RapidAPI)
+ * UBUYHERE API - 商品链接解析
  * 支持淘宝、天猫、京东、拼多多、1688
+ * 智能模拟数据 - 根据商品ID生成不同类型商品
  */
 
 const PLATFORM_PATTERNS = {
@@ -39,150 +40,116 @@ const PLATFORM_INFO = {
   '1688': { name: '1688', nameEn: '1688', color: '#FF6A00' }
 };
 
-// 调用RapidAPI获取真实商品数据
-async function fetchProductFromRapidAPI(productId, platform) {
-  const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
-  
-  if (!RAPIDAPI_KEY) {
-    console.log('RapidAPI key not configured, using mock data');
-    return null;
+// 商品类型库 - 根据ID选择不同类型
+const PRODUCT_TYPES = [
+  {
+    category: '电子产品',
+    categoryEn: 'Electronics',
+    items: [
+      { title: '无线蓝牙耳机降噪运动耳机', titleEn: 'Wireless Bluetooth Noise Canceling Sports Earbuds', price: 199, image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400', specs: ['颜色: 黑色/白色', '类型: 入耳式/半入耳式'] },
+      { title: '智能手表运动健康监测手环', titleEn: 'Smart Watch Sports Health Monitor Band', price: 299, image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400', specs: ['颜色: 黑色/银色', '尺寸: 42mm/46mm'] },
+      { title: '便携式充电宝20000mAh大容量', titleEn: 'Portable Power Bank 20000mAh High Capacity', price: 129, image: 'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=400', specs: ['容量: 10000mAh/20000mAh', '接口: Type-C/USB'] },
+      { title: '机械键盘RGB背光游戏键盘', titleEn: 'Mechanical Keyboard RGB Backlit Gaming Keyboard', price: 359, image: 'https://images.unsplash.com/photo-1595225476474-87563907a212?w=400', specs: ['轴体: 红轴/青轴/茶轴', '布局: 87键/104键'] }
+    ]
+  },
+  {
+    category: '工具设备',
+    categoryEn: 'Tools & Equipment',
+    items: [
+      { title: '充电式电锯家用小型伐木锯', titleEn: 'Rechargeable Electric Chainsaw Mini Logging Saw', price: 459, image: 'https://images.unsplash.com/photo-1504148455328-c376907d081c?w=400', specs: ['电压: 21V/48V', '链条: 4寸/6寸/8寸'] },
+      { title: '电动螺丝刀充电式家用工具套装', titleEn: 'Electric Screwdriver Rechargeable Home Tool Set', price: 189, image: 'https://images.unsplash.com/photo-1581147036324-c17ac41f3e2e?w=400', specs: ['电压: 12V/21V', '配件: 20件/45件'] },
+      { title: '角磨机多功能打磨切割机', titleEn: 'Angle Grinder Multi-function Polishing Cutting Machine', price: 259, image: 'https://images.unsplash.com/photo-1572981779307-38b8cabb2407?w=400', specs: ['功率: 850W/1200W', '盘径: 100mm/125mm'] },
+      { title: '电钻充电手枪钻家用电动工具', titleEn: 'Electric Drill Rechargeable Pistol Drill Home Power Tool', price: 329, image: 'https://images.unsplash.com/photo-1504148455328-c376907d081c?w=400', specs: ['电压: 12V/21V', '功能: 单速/双速'] }
+    ]
+  },
+  {
+    category: '服装鞋包',
+    categoryEn: 'Fashion',
+    items: [
+      { title: '休闲运动鞋透气网面跑步鞋', titleEn: 'Casual Sports Shoes Breathable Mesh Running Shoes', price: 199, image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400', specs: ['颜色: 黑色/白色/灰色', '尺码: 39-44'] },
+      { title: '双肩包大容量旅行背包', titleEn: 'Backpack Large Capacity Travel Bag', price: 159, image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400', specs: ['颜色: 黑色/蓝色', '容量: 30L/40L'] },
+      { title: '纯棉T恤男士短袖圆领上衣', titleEn: 'Cotton T-Shirt Mens Short Sleeve Round Neck Top', price: 79, image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400', specs: ['颜色: 多色可选', '尺码: M-3XL'] },
+      { title: '休闲裤男士直筒宽松长裤', titleEn: 'Casual Pants Mens Straight Loose Trousers', price: 139, image: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=400', specs: ['颜色: 黑色/卡其', '尺码: 28-36'] }
+    ]
+  },
+  {
+    category: '家居用品',
+    categoryEn: 'Home & Living',
+    items: [
+      { title: '智能扫地机器人自动清扫吸尘器', titleEn: 'Smart Robot Vacuum Cleaner Auto Sweeping', price: 899, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400', specs: ['功能: 扫吸拖一体', '续航: 120分钟'] },
+      { title: '空气净化器家用卧室除甲醛', titleEn: 'Air Purifier Home Bedroom Formaldehyde Removal', price: 599, image: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400', specs: ['适用面积: 30-50㎡', '滤网: HEPA'] },
+      { title: '电热水壶不锈钢保温烧水壶', titleEn: 'Electric Kettle Stainless Steel Insulated', price: 129, image: 'https://images.unsplash.com/photo-1594213114663-400a67ed8ddb?w=400', specs: ['容量: 1.5L/1.8L', '材质: 304不锈钢'] },
+      { title: '床上四件套纯棉被套床单', titleEn: 'Bedding Set Cotton Duvet Cover Bed Sheet', price: 299, image: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=400', specs: ['尺寸: 1.5m/1.8m床', '材质: 纯棉'] }
+    ]
+  },
+  {
+    category: '美妆护肤',
+    categoryEn: 'Beauty & Skincare',
+    items: [
+      { title: '面部精华液补水保湿修护', titleEn: 'Facial Serum Hydrating Moisturizing Repair', price: 168, image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=400', specs: ['功效: 补水/美白', '容量: 30ml'] },
+      { title: '口红持久不脱色哑光唇膏', titleEn: 'Lipstick Long Lasting Matte Lip Color', price: 89, image: 'https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=400', specs: ['色号: 多色可选', '质地: 哑光/滋润'] },
+      { title: '防晒霜SPF50+隔离防紫外线', titleEn: 'Sunscreen SPF50+ UV Protection', price: 128, image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=400', specs: ['SPF: 30/50+', '容量: 50ml'] },
+      { title: '洗面奶温和清洁氨基酸洁面', titleEn: 'Facial Cleanser Gentle Amino Acid Face Wash', price: 69, image: 'https://images.unsplash.com/photo-1556228841-a3c527ebefe5?w=400', specs: ['肤质: 全肤质适用', '容量: 120ml'] }
+    ]
   }
+];
 
-  try {
-    // RapidAPI Taobao Product API endpoint
-    const url = `https://taobao-product-api.p.rapidapi.com/item_detail?num_iid=${productId}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': 'taobao-product-api.p.rapidapi.com'
-      }
-    });
-
-    if (!response.ok) {
-      console.log('RapidAPI request failed:', response.status);
-      return null;
-    }
-
-    const data = await response.json();
-    
-    if (data && data.item) {
-      const item = data.item;
-      return {
-        title: item.title || item.name || '商品标题',
-        titleEn: item.title_en || item.title || 'Product Title',
-        price: parseFloat(item.price) || parseFloat(item.promo_price) || 99.00,
-        originalPrice: parseFloat(item.original_price) || parseFloat(item.price) || 199.00,
-        currency: 'CNY',
-        sales: item.sold_count || item.sales || '1000+',
-        rating: item.rating || 4.8,
-        shop: item.shop_name || item.seller_nick || '官方店铺',
-        location: item.location || '中国',
-        images: item.images || item.main_imgs || [item.pic_url].filter(Boolean),
-        specs: item.props_list ? Object.values(item.props_list).slice(0, 5) : [],
-        description: item.desc || item.description || ''
-      };
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('RapidAPI fetch error:', error);
-    return null;
-  }
-}
-
-// 模拟商品数据（当API不可用时的后备方案）
+// 根据商品ID智能生成模拟数据
 function generateMockProduct(platform, productId) {
-  const mockProducts = {
-    taobao: {
-      title: '2024新款时尚休闲双肩包大容量旅行背包',
-      titleEn: '2024 New Fashion Casual Backpack Large Capacity Travel Bag',
-      price: 89.00,
-      originalPrice: 169.00,
-      currency: 'CNY',
-      sales: '5000+',
-      rating: 4.8,
-      shop: '潮流箱包旗舰店',
-      location: '广东 广州',
-      images: [
-        'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400',
-        'https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?w=400'
-      ],
-      specs: ['颜色: 黑色/灰色/蓝色', '尺寸: 大号/中号']
-    },
-    tmall: {
-      title: 'Apple/苹果 iPhone 15 Pro Max 256GB 官方正品',
-      titleEn: 'Apple iPhone 15 Pro Max 256GB Official Authentic',
-      price: 9999.00,
-      originalPrice: 10999.00,
-      currency: 'CNY',
-      sales: '10000+',
-      rating: 4.9,
-      shop: 'Apple官方旗舰店',
-      location: '上海',
-      images: [
-        'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=400'
-      ],
-      specs: ['颜色: 原色钛金属/蓝色钛金属', '存储: 256GB/512GB/1TB']
-    },
-    jd: {
-      title: '小米14 Ultra 徕卡光学镜头 骁龙8Gen3',
-      titleEn: 'Xiaomi 14 Ultra Leica Optical Lens Snapdragon 8 Gen3',
-      price: 6499.00,
-      originalPrice: 6999.00,
-      currency: 'CNY',
-      sales: '8000+',
-      rating: 4.9,
-      shop: '小米京东自营旗舰店',
-      location: '北京',
-      images: [
-        'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=400'
-      ],
-      specs: ['颜色: 黑色/白色', '版本: 12GB+256GB/16GB+512GB']
-    },
-    pinduoduo: {
-      title: '农家自产新鲜水果苹果红富士10斤装',
-      titleEn: 'Farm Fresh Fruit Apple Red Fuji 10kg Pack',
-      price: 29.90,
-      originalPrice: 59.90,
-      currency: 'CNY',
-      sales: '100000+',
-      rating: 4.7,
-      shop: '果园直供店',
-      location: '山东 烟台',
-      images: [
-        'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400'
-      ],
-      specs: ['规格: 5斤装/10斤装', '大小: 大果/中果']
-    },
-    '1688': {
-      title: '工厂直销定制款休闲T恤批发',
-      titleEn: 'Factory Direct Custom Casual T-Shirt Wholesale',
-      price: 15.00,
-      originalPrice: 25.00,
-      currency: 'CNY',
-      sales: '50000+',
-      rating: 4.6,
-      shop: '广州服装批发商',
-      location: '广东 广州',
-      images: [
-        'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400'
-      ],
-      specs: ['颜色: 多色可选', '尺码: S-3XL'],
-      minOrder: 50
-    }
+  // 使用商品ID的数字特征来选择商品类型
+  const idNum = parseInt(productId) || Date.now();
+  
+  // 选择商品类别 (根据ID的某些数字)
+  const categoryIndex = idNum % PRODUCT_TYPES.length;
+  const category = PRODUCT_TYPES[categoryIndex];
+  
+  // 选择具体商品 (根据ID的其他数字)
+  const itemIndex = Math.floor(idNum / 10) % category.items.length;
+  const item = category.items[itemIndex];
+  
+  // 生成价格浮动 (基于ID)
+  const priceVariation = 0.8 + (idNum % 40) / 100; // 0.8 - 1.2 倍价格
+  const price = Math.round(item.price * priceVariation);
+  const originalPrice = Math.round(price * (1.2 + (idNum % 30) / 100));
+  
+  // 生成销量 (基于ID)
+  const salesBase = (idNum % 100) * 100 + 500;
+  const sales = salesBase > 10000 ? `${Math.floor(salesBase / 10000)}万+` : `${salesBase}+`;
+  
+  // 店铺名称
+  const shopNames = {
+    taobao: ['品质生活馆', '优选好物店', '实惠百货铺', '精品专营店'],
+    tmall: ['官方旗舰店', '品牌专卖店', '自营旗舰店', '授权专营店'],
+    jd: ['京东自营', '品牌旗舰店', '官方直营店', '优选好店'],
+    pinduoduo: ['工厂直销店', '产地直供', '实惠好物', '品质优选'],
+    '1688': ['源头工厂', '批发直供', '厂家直销', '产业带货源']
   };
-
-  const baseProduct = mockProducts[platform] || mockProducts.taobao;
+  const shopList = shopNames[platform] || shopNames.taobao;
+  const shop = shopList[idNum % shopList.length];
+  
+  // 地区
+  const locations = ['广东 深圳', '浙江 杭州', '上海', '江苏 苏州', '北京', '福建 厦门', '山东 青岛'];
+  const location = locations[idNum % locations.length];
   
   return {
-    ...baseProduct,
-    id: productId || `${platform}_${Date.now()}`,
-    platform,
+    title: item.title,
+    titleEn: item.titleEn,
+    price: price,
+    originalPrice: originalPrice,
+    currency: 'CNY',
+    sales: sales,
+    rating: (4.5 + (idNum % 5) / 10).toFixed(1),
+    shop: shop,
+    location: location,
+    images: [item.image],
+    specs: item.specs,
+    category: category.category,
+    categoryEn: category.categoryEn,
+    id: productId,
+    platform: platform,
     platformInfo: PLATFORM_INFO[platform],
     updatedAt: new Date().toISOString(),
-    dataSource: 'mock' // 标记数据来源
+    dataSource: 'smart-mock'
   };
 }
 
@@ -295,21 +262,9 @@ export default async function handler(req, res) {
     return res.status(200).json(parseResult);
   }
 
-  // 获取商品信息
+  // 获取商品信息 - 使用智能模拟数据
   if (fetchProduct && parseResult.productId) {
-    // 首先尝试从RapidAPI获取真实数据
-    let product = await fetchProductFromRapidAPI(parseResult.productId, parseResult.platform);
-    
-    // 如果API失败，使用模拟数据
-    if (!product) {
-      product = generateMockProduct(parseResult.platform, parseResult.productId);
-    } else {
-      product.dataSource = 'rapidapi'; // 标记数据来源
-    }
-
-    product.id = parseResult.productId;
-    product.platform = parseResult.platform;
-    product.platformInfo = parseResult.platformInfo;
+    const product = generateMockProduct(parseResult.platform, parseResult.productId);
 
     return res.status(200).json({
       ...parseResult,
